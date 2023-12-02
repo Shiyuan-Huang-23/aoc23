@@ -1,5 +1,5 @@
-#include <iostream>
 #include <fstream>
+#include <iostream>
 #include <string>
 
 using namespace std;
@@ -84,7 +84,7 @@ int findLatestDigit(const string &line)
         {
             latestPos = index;
             result = i + 1;
-            index = line.find(digitStrs[i], latestPos + 1); 
+            index = line.find(digitStrs[i], latestPos + 1);
         }
     }
     return result;
