@@ -1,35 +1,19 @@
 #include <fstream>
 #include <iostream>
+#include <map>
 #include <numeric>
 #include <sstream>
 #include <string>
+#include <utility>
 #include <vector>
 
 using namespace std;
-
-bool DEBUG = false;
-
-void disp(const vector<int> &counts) {
-    cout << '{';
-    for (int i = 0; i < counts.size(); i++) {
-        cout << counts[i];
-        if (i < counts.size() - 1) {
-            cout << ',';
-        }
-    }
-    cout << '}';
-}
 
 // reduces the problem of finding spring arrangements to an equivalent problem
 // with fewer springs and counts by modifying springs and counts in place
 // returns true if the reduction was done successfully, false if springs do
 // not match counts
 bool reduce(string &springs, vector<int> &counts) {
-    if (DEBUG) {
-        cout << "reduce(" << springs << ',';
-        disp(counts);
-        cout << ')' << endl;
-    }
     if (!counts.empty()) {
         int minLength =
             accumulate(counts.begin(), counts.end(), 0) + counts.size() - 1;
@@ -80,12 +64,6 @@ bool reduce(string &springs, vector<int> &counts) {
         springs.erase(0, 1);
     }
     counts.erase(counts.begin(), counts.begin() + groupsCompleted);
-    if (DEBUG) {
-        cout << "reduce() successful" << endl;
-        cout << springs << endl;
-        disp(counts);
-        cout << endl;
-    }
     return true;
 }
 
@@ -130,9 +108,15 @@ bool fillInFirstCount(string &springs, vector<int> &counts) {
     return false;
 }
 
+map<pair<string,vector<int>>,long> cache;
+
 // how many different arrangements of operational and broken springs fit the
 // counts
 long recurse(const string &springs, const vector<int> &counts) {
+    auto p = make_pair(springs, counts);
+    if (cache.contains(p)) {
+        return cache[p];
+    }
     auto index = springs.find('?');
     if (index != string::npos) {
         if (counts.empty()) {
@@ -143,7 +127,9 @@ long recurse(const string &springs, const vector<int> &counts) {
                     springsCopy[i] = '.';
                 }
             }
-            return reduce(springsCopy, countsCopy);
+            long returnVal = reduce(springsCopy, countsCopy);
+            cache[p] = returnVal;
+            return returnVal;
         }
         long result = 0;
         bool unbrokenSpringUsed = false;
@@ -167,11 +153,13 @@ long recurse(const string &springs, const vector<int> &counts) {
                 result += recurse(springsCopy, countsCopy);
             }
         }
+        cache[p] = result;
         return result;
     } else {
         string springsCopy(springs);
         vector<int> countsCopy(counts);
         bool doesMatch = reduce(springsCopy, countsCopy);
+        cache[p] = doesMatch;
         return doesMatch;
     }
 }
@@ -205,7 +193,6 @@ void part2() {
     strm.open("../../inputs/day12.txt");
     string line;
     long result = 0;
-    int num = 0;
     while (getline(strm, line)) {
         stringstream ss(line);
         string springs;
@@ -228,10 +215,7 @@ void part2() {
             }
         }
         reduce(springsUnfolded, counts);
-        long temp = recurse(springsUnfolded, counts);
-        result += temp;
-        num++;
-        cout << num << ':' << temp << endl;
+        result += recurse(springsUnfolded, counts);
     }
     cout << result << endl;
 }
