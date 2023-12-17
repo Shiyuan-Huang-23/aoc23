@@ -1,121 +1,168 @@
 #include <fstream>
 #include <iostream>
+#include <numeric>
 #include <sstream>
 #include <string>
 #include <vector>
 
 using namespace std;
 
-// checks if the record of strings, s, matches the contiguous group counts
-// Requires: s only has '#' and '.'
-bool matches(const string &s, const vector<int> &counts) {
-    // length of current contiguous group of damaged strings
-    int len = 0;
-    // how many groups have been completed so far
-    int groupNum = 0;
-    for (int i = 0; i < s.size(); i++) {
-        char c = s[i];
-        if (c == '.') {
-            if (len != 0) {
-                if (groupNum >= counts.size()) {
-                    return false;
-                }
-                // end current group
-                if (len != counts[groupNum]) {
-                    return false;
-                }
-                len = 0;
-                groupNum++;
-            }
-        } else {
-            len++;
+bool DEBUG = false;
+
+void disp(const vector<int> &counts) {
+    cout << '{';
+    for (int i = 0; i < counts.size(); i++) {
+        cout << counts[i];
+        if (i < counts.size() - 1) {
+            cout << ',';
         }
     }
-    // make sure to count last group if needed
-    if (len != 0) {
-        if (groupNum >= counts.size()) {
-            return false;
-        }
-        if (len == counts[groupNum]) {
-            groupNum++;
-        } else {
-            return false;
-        }
-    }
-    // make sure all groups have been accounted for
-    return groupNum == counts.size();
+    cout << '}';
 }
 
-struct prefixinfo {
-    // number of groups that have been completed in the prefix
-    int groupsCompleted;
-    // index of the end of the last completed group, that is, the '.' after
-    // the last completed group
-    int endOfLastGroup;
-};
-
-// make sure s[0, size) matches a prefix of counts, and returns number of
-// groups completed in counts
-prefixinfo getPrefixInfo(const string &s, int size, const vector<int> &counts) {
-    // length of current contiguous group of damaged strings
+// reduces the problem of finding spring arrangements to an equivalent problem
+// with fewer springs and counts by modifying springs and counts in place
+// returns true if the reduction was done successfully, false if springs do
+// not match counts
+bool reduce(string &springs, vector<int> &counts) {
+    if (DEBUG) {
+        cout << "reduce(" << springs << ',';
+        disp(counts);
+        cout << ')' << endl;
+    }
+    if (!counts.empty()) {
+        int minLength =
+            accumulate(counts.begin(), counts.end(), 0) + counts.size() - 1;
+        if (springs.size() < minLength) {
+            return false;
+        }
+    }
+    // length of current contiguous group of damaged springs
     int len = 0;
     // how many groups have been completed so far
     int groupsCompleted = 0;
     int endOfLastGroup = -1;
-    for (int i = 0; i < size; i++) {
-        char c = s[i];
+    bool containsUnknown = false;
+    for (int i = 0; i < springs.size(); i++) {
+        char c = springs[i];
         if (c == '.') {
+            // complete current group of damaged springs
             if (len != 0) {
-                if (groupsCompleted >= counts.size()) {
-                    return {-1, -1};
-                }
-                // end current group
-                if (len != counts[groupsCompleted]) {
-                    return {-1, -1};
+                if (groupsCompleted >= counts.size() ||
+                    len != counts[groupsCompleted]) {
+                    return false;
                 }
                 len = 0;
                 groupsCompleted++;
                 endOfLastGroup = i;
             }
-        } else {
+        } else if (c == '#') {
             len++;
+        } else if (c == '?') {
+            containsUnknown = true;
+            break;
         }
     }
-    // don't count group as completed unless we've see a '.' after it
-    return {groupsCompleted, endOfLastGroup};
+    // if we end on a group of damaged springs, take that into account
+    if (len != 0 && !containsUnknown) {
+        if (groupsCompleted >= counts.size() ||
+            len != counts[groupsCompleted]) {
+            return false;
+        }
+        groupsCompleted++;
+        endOfLastGroup = springs.size() - 1;
+    }
+    if (!containsUnknown && groupsCompleted != counts.size()) {
+        return false;
+    }
+    springs.erase(0, endOfLastGroup + 1);
+    while (!springs.empty() && springs[0] == '.') {
+        springs.erase(0, 1);
+    }
+    counts.erase(counts.begin(), counts.begin() + groupsCompleted);
+    if (DEBUG) {
+        cout << "reduce() successful" << endl;
+        cout << springs << endl;
+        disp(counts);
+        cout << endl;
+    }
+    return true;
 }
 
-long calcArrangements(const string &s, const vector<int> counts) {
-    auto index = s.find('?');
-    if (index != string::npos) {
-        // explore both possible options for '?'
-        string sBroken(s);
-        sBroken[index] = '#';
-        long result = 0;
-        prefixinfo p = getPrefixInfo(sBroken, index + 1, counts);
-        if (p.groupsCompleted != -1) {
-            vector<int> subCounts = {counts.begin() + p.groupsCompleted,
-                                     counts.end()};
-            string newS = p.endOfLastGroup == -1
-                              ? sBroken
-                              : sBroken.substr(p.endOfLastGroup + 1);
-            result += calcArrangements(newS, subCounts);
+// Fills in ? characters in springs in place as needed to fulfill at least
+// first count in counts
+// Returns: true if filling is successful, false ow
+// Requires: springs are in reduced form wrt counts, springs contains a ?,
+// counts is non-empty
+bool fillInFirstCount(string &springs, vector<int> &counts) {
+    // length of current contiguous group of damaged strings
+    int len = 0;
+    // whether the first group matching the first count has been completed
+    bool groupCompleted = false;
+    for (int i = 0; i < springs.size(); i++) {
+        char c = springs[i];
+        if (c == '.') {
+            if (len != 0) {
+                if (len == counts[0]) {
+                    return true;
+                } else {
+                    return false;
+                }
+            }
+        } else if (c == '#') {
+            len++;
+            if (len > counts[0]) {
+                return false;
+            }
+        } else if (c == '?') {
+            if (len < counts[0]) {
+                springs[i] = '#';
+                len++;
+            } else if (len == counts[0]) {
+                springs[i] = '.';
+                return true;
+            }
         }
-        string sWorking(s);
-        sWorking[index] = '.';
-        p = getPrefixInfo(sWorking, index + 1, counts);
-        if (p.groupsCompleted != -1) {
-            vector<int> subCounts = {counts.begin() + p.groupsCompleted,
-                                     counts.end()};
-            string newS = p.endOfLastGroup == -1
-                              ? sWorking
-                              : sWorking.substr(p.endOfLastGroup + 1);
-            result += calcArrangements(newS, subCounts);
+    }
+    if (len == counts[0]) {
+        return true;
+    }
+    return false;
+}
+
+// how many different arrangements of operational and broken springs fit the
+// counts
+long recurse(const string &springs, const vector<int> &counts) {
+    auto index = springs.find('?');
+    if (index != string::npos) {
+        long result = 0;
+        bool unbrokenSpringUsed = false;
+        if (!counts.empty()) {
+            string springsCopy(springs);
+            vector<int> countsCopy(counts);
+            bool valid = fillInFirstCount(springsCopy, countsCopy);
+            if (valid) {
+                unbrokenSpringUsed = springsCopy[index] == '.';
+                if (reduce(springsCopy, countsCopy)) {
+                    result += recurse(springsCopy, countsCopy);
+                }
+            }
+        }
+        if (!unbrokenSpringUsed) {
+            string springsCopy(springs);
+            vector<int> countsCopy(counts);
+            springsCopy[index] = '.';
+            bool valid = reduce(springsCopy, countsCopy);
+            if (valid) {
+                result += recurse(springsCopy, countsCopy);
+            }
         }
         return result;
     } else {
-        // no missing records, check if the record matches the group counts
-        return matches(s, counts);
+        string springsCopy(springs);
+        vector<int> countsCopy(counts);
+        bool doesMatch = reduce(springsCopy, countsCopy);
+        return doesMatch;
     }
 }
 
@@ -123,11 +170,11 @@ void part1() {
     ifstream strm;
     strm.open("../../inputs/day12.txt");
     string line;
-    int result = 0;
+    long result = 0;
     while (getline(strm, line)) {
         stringstream ss(line);
-        string s;
-        ss >> s;
+        string springs;
+        ss >> springs;
         vector<int> counts;
         int d;
         while (ss >> d) {
@@ -136,7 +183,9 @@ void part1() {
                 ss.ignore();
             }
         }
-        result += calcArrangements(s, counts);
+        // reduce problem to a sub-problem in place
+        reduce(springs, counts);
+        result += recurse(springs, counts);
     }
     cout << result << endl;
 }
@@ -149,8 +198,8 @@ void part2() {
     int num = 0;
     while (getline(strm, line)) {
         stringstream ss(line);
-        string s;
-        ss >> s;
+        string springs;
+        ss >> springs;
         vector<int> counts;
         int d;
         while (ss >> d) {
@@ -160,17 +209,19 @@ void part2() {
             }
         }
         int countsSize = counts.size();
-        string sUnfolded(s);
+        string springsUnfolded(springs);
         for (int i = 0; i < 4; i++) {
-            sUnfolded += '?';
-            sUnfolded += s;
+            springsUnfolded += '?';
+            springsUnfolded += springs;
             for (int j = 0; j < countsSize; j++) {
                 counts.push_back(counts[j]);
             }
         }
-        long temp = calcArrangements(sUnfolded, counts);
+        reduce(springsUnfolded, counts);
+        long temp = recurse(springsUnfolded, counts);
         result += temp;
         num++;
+        cout << num << ':' << temp << endl;
     }
     cout << result << endl;
 }
