@@ -135,6 +135,16 @@ bool fillInFirstCount(string &springs, vector<int> &counts) {
 long recurse(const string &springs, const vector<int> &counts) {
     auto index = springs.find('?');
     if (index != string::npos) {
+        if (counts.empty()) {
+            string springsCopy(springs);
+            vector<int> countsCopy(counts);
+            for (int i = index; i < springs.size(); i++) {
+                if (springsCopy[i] == '?') {
+                    springsCopy[i] = '.';
+                }
+            }
+            return reduce(springsCopy, countsCopy);
+        }
         long result = 0;
         bool unbrokenSpringUsed = false;
         if (!counts.empty()) {
